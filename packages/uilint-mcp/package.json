@@ -1,0 +1,36 @@
+{
+  "name": "uilint-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for UILint - enables AI agents to validate UI code",
+  "type": "module",
+  "main": "./dist/server.js",
+  "bin": {
+    "uilint-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/server.ts --format esm --clean",
+    "dev": "tsup src/server.ts --format esm --watch",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ui",
+    "lint",
+    "ai"
+  ],
+  "license": "MIT"
+}
+
