@@ -1,6 +1,6 @@
 {
   "name": "uilint",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "AI-powered UI consistency checker for Next.js applications",
   "scripts": {
@@ -11,6 +11,9 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "uilint": "node packages/uilint-cli/dist/index.js",
+    "version:patch": "pnpm --filter 'uilint-*' exec npm version patch --no-git-tag-version && npm version patch --no-git-tag-version",
+    "version:minor": "pnpm --filter 'uilint-*' exec npm version minor --no-git-tag-version && npm version minor --no-git-tag-version",
+    "version:major": "pnpm --filter 'uilint-*' exec npm version major --no-git-tag-version && npm version major --no-git-tag-version",
     "publish:dry": "pnpm --filter uilint-core publish --dry-run --no-git-checks && pnpm --filter uilint-react publish --dry-run --no-git-checks && pnpm --filter uilint-cli publish --dry-run --no-git-checks && pnpm --filter uilint-mcp publish --dry-run --no-git-checks",
     "publish:packages": "pnpm --filter uilint-core publish --access public --no-git-checks && pnpm --filter uilint-react publish --access public --no-git-checks && pnpm --filter uilint-cli publish --access public --no-git-checks && pnpm --filter uilint-mcp publish --access public --no-git-checks"
   },

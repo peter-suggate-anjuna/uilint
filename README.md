@@ -567,20 +567,25 @@ pnpm test
 This repo is a pnpm workspace. Publish the packages in dependency order:
 
 ```bash
-# Build everything first
+# 1. Bump versions (choose one)
+pnpm version:patch   # 0.1.0 → 0.1.1 (bug fixes)
+pnpm version:minor   # 0.1.0 → 0.2.0 (new features)
+pnpm version:major   # 0.1.0 → 1.0.0 (breaking changes)
+
+# 2. Build everything
 pnpm build:packages
 
-# Sanity check what would be published
+# 3. Sanity check what would be published
 pnpm publish:dry
 
-# Publish (public)
+# 4. Publish (public)
 pnpm publish:packages
 ```
 
 Notes:
 
 - You must be logged in to npm (`npm whoami`) and have rights to publish the package names.
-- If you change versions, keep `packages/*/package.json` versions in sync and ensure internal deps (e.g. `uilint-core`) point at the matching semver range.
+- The `version:*` scripts bump all packages and the root in sync automatically.
 
 ---
 
