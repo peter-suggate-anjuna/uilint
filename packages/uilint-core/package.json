@@ -1,7 +1,7 @@
 {
-  "name": "uilint-react",
+  "name": "uilint-core",
   "version": "0.1.0",
-  "description": "React component for AI-powered UI consistency checking",
+  "description": "Core library for UILint - AI-powered UI consistency checking",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -26,28 +26,21 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "uilint-core": "workspace:*"
-  },
-  "peerDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "jsdom": "^25.0.1"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "@types/jsdom": "^21.1.7",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
   },
   "keywords": [
-    "react",
     "ui",
     "lint",
     "consistency",
     "design-system",
     "ai",
-    "llm"
+    "llm",
+    "ollama"
   ],
   "license": "MIT"
 }

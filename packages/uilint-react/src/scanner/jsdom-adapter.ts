@@ -1,8 +1,16 @@
-import type { DOMSnapshot, UILintIssue, AnalysisResult } from "../types";
-import { scanDOM, createStyleSummary } from "./dom-scanner";
-import { isJSDOM } from "./environment";
+/**
+ * Adapter for running UILint in JSDOM/Node.js test environments
+ * Uses uilint-core for analysis
+ */
 
-const OLLAMA_URL = "http://localhost:11434/api/generate";
+import {
+  OllamaClient,
+  createStyleSummary,
+  type UILintIssue,
+  type AnalysisResult,
+} from "uilint-core";
+import { scanDOM } from "./dom-scanner.js";
+import { isJSDOM } from "./environment.js";
 
 /**
  * Adapter for running UILint in JSDOM/Node.js test environments
@@ -11,9 +19,11 @@ const OLLAMA_URL = "http://localhost:11434/api/generate";
 export class JSDOMAdapter {
   private styleGuideContent: string | null = null;
   private styleGuidePath: string;
+  private client: OllamaClient;
 
   constructor(styleGuidePath: string = ".uilint/styleguide.md") {
     this.styleGuidePath = styleGuidePath;
+    this.client = new OllamaClient();
   }
 
   /**
@@ -51,99 +61,16 @@ export class JSDOMAdapter {
       await this.loadStyleGuide();
     }
 
-    // Call Ollama directly
-    const issues = await this.callOllama(styleSummary, this.styleGuideContent);
+    // Call Ollama via the core client
+    const result = await this.client.analyzeStyles(
+      styleSummary,
+      this.styleGuideContent
+    );
 
     return {
-      issues,
+      issues: result.issues,
       analysisTime: Date.now() - startTime,
     };
-  }
-
-  /**
-   * Calls Ollama directly (for test environments)
-   */
-  private async callOllama(
-    styleSummary: string,
-    styleGuide: string | null
-  ): Promise<UILintIssue[]> {
-    const prompt = this.buildPrompt(styleSummary, styleGuide);
-
-    try {
-      const response = await fetch(OLLAMA_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama3.2",
-          prompt,
-          stream: false,
-          format: "json",
-        }),
-      });
-
-      if (!response.ok) {
-        console.warn(
-          "[UILint] Failed to connect to Ollama. Is it running on localhost:11434?"
-        );
-        return [];
-      }
-
-      const data = await response.json();
-      return this.parseResponse(data.response);
-    } catch (error) {
-      console.warn("[UILint] Error calling Ollama:", error);
-      return [];
-    }
-  }
-
-  private buildPrompt(styleSummary: string, styleGuide: string | null): string {
-    const guideSection = styleGuide
-      ? `## Current Style Guide\n${styleGuide}\n\n`
-      : "## No Style Guide Found\nAnalyze the styles and identify inconsistencies.\n\n";
-
-    return `You are a UI consistency analyzer. Analyze the following extracted styles and identify inconsistencies.
-
-${guideSection}
-
-${styleSummary}
-
-Respond with a JSON object containing an "issues" array. Each issue should have:
-- id: unique string identifier
-- type: one of "color", "typography", "spacing", "component", "responsive", "accessibility"
-- message: human-readable description of the issue
-- currentValue: the problematic value found
-- expectedValue: what it should be (if known from style guide)
-- suggestion: how to fix it
-
-Focus on:
-1. Similar but not identical colors (e.g., #3B82F6 vs #3575E2)
-2. Inconsistent font sizes or weights
-3. Spacing values that don't follow a consistent scale
-4. Mixed border-radius values
-
-Example response:
-{
-  "issues": [
-    {
-      "id": "color-1",
-      "type": "color",
-      "message": "Found similar blue colors that should be consolidated",
-      "currentValue": "#3575E2",
-      "expectedValue": "#3B82F6",
-      "suggestion": "Use the primary blue #3B82F6 consistently"
-    }
-  ]
-}`;
-  }
-
-  private parseResponse(response: string): UILintIssue[] {
-    try {
-      const parsed = JSON.parse(response);
-      return parsed.issues || [];
-    } catch {
-      console.warn("[UILint] Failed to parse LLM response");
-      return [];
-    }
   }
 
   /**
@@ -184,3 +111,6 @@ export async function runUILintInTest(
   adapter.outputWarnings(result.issues);
   return result.issues;
 }
+
+// Re-export for backwards compatibility
+export { isJSDOM };

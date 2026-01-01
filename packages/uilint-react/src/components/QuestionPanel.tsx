@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useUILint } from "./UILint";
-import type { UILintIssue } from "../types";
+import type { UILintIssue } from "uilint-core";
 
 interface StyleQuestion {
   id: string;

@@ -1,68 +1,124 @@
-import { parseStyleGuideSections, extractStyleValues } from '../styleguide-reader.js';
+/**
+ * Query style guide for specific rules
+ * Uses uilint-core for parsing and optionally LLM for complex queries
+ */
+
+import { parseStyleGuide, extractStyleValues, OllamaClient } from "uilint-core";
 
 /**
- * Answers queries about the style guide
+ * Queries the style guide and returns relevant information
  */
 export async function queryStyleGuide(
   query: string,
   styleGuide: string | null
 ): Promise<string> {
   if (!styleGuide) {
-    return 'No style guide found. Create .uilint/styleguide.md to define your design system.';
+    return "No style guide found. Create a .uilint/styleguide.md file to define your design system.";
   }
 
-  const lowerQuery = query.toLowerCase();
-  const sections = parseStyleGuideSections(styleGuide);
-  const values = extractStyleValues(styleGuide);
-
-  // Color queries
-  if (lowerQuery.includes('color')) {
-    if (values.colors.length > 0) {
-      return `Allowed colors:\n${values.colors.map((c) => `- ${c}`).join('\n')}\n\nFrom style guide:\n${sections['colors'] || 'No colors section found.'}`;
-    }
-    return sections['colors'] || 'No colors defined in style guide.';
+  // Try to answer simple queries without LLM
+  const simpleAnswer = getSimpleAnswer(query, styleGuide);
+  if (simpleAnswer) {
+    return simpleAnswer;
   }
 
-  // Font/Typography queries
-  if (lowerQuery.includes('font') || lowerQuery.includes('typography')) {
-    const response: string[] = [];
+  // Use LLM for complex queries
+  try {
+    const client = new OllamaClient();
+    const available = await client.isAvailable();
     
-    if (values.fontFamilies.length > 0) {
-      response.push(`Font families: ${values.fontFamilies.join(', ')}`);
+    if (!available) {
+      return getFallbackAnswer(query, styleGuide);
     }
-    
-    if (values.fontSizes.length > 0) {
-      response.push(`Font sizes: ${values.fontSizes.join(', ')}`);
-    }
-    
-    if (sections['typography']) {
-      response.push(`\nFrom style guide:\n${sections['typography']}`);
-    }
-    
-    return response.length > 0 ? response.join('\n') : 'No typography defined in style guide.';
-  }
 
-  // Spacing queries
-  if (lowerQuery.includes('spacing') || lowerQuery.includes('margin') || lowerQuery.includes('padding')) {
-    return sections['spacing'] || 'No spacing defined in style guide. Common practice: use a 4px or 8px base unit.';
+    return await client.queryStyleGuide(query, styleGuide);
+  } catch {
+    return getFallbackAnswer(query, styleGuide);
   }
-
-  // Border radius queries
-  if (lowerQuery.includes('border') || lowerQuery.includes('radius') || lowerQuery.includes('rounded')) {
-    return sections['border radius'] || sections['components'] || 'No border radius defined in style guide.';
-  }
-
-  // Component queries
-  if (lowerQuery.includes('component') || lowerQuery.includes('button') || lowerQuery.includes('card')) {
-    return sections['components'] || 'No component patterns defined in style guide.';
-  }
-
-  // General/full style guide request
-  if (lowerQuery.includes('all') || lowerQuery.includes('full') || lowerQuery.includes('everything')) {
-    return styleGuide;
-  }
-
-  // Default: return the most relevant section or full guide
-  return `Here's the style guide:\n\n${styleGuide}\n\nFor specific questions, try asking about colors, fonts, spacing, or components.`;
 }
 
+/**
+ * Attempts to answer simple queries without LLM
+ */
+function getSimpleAnswer(query: string, styleGuide: string): string | null {
+  const lowerQuery = query.toLowerCase();
+  const values = extractStyleValues(styleGuide);
+  const parsed = parseStyleGuide(styleGuide);
+
+  // Colors query
+  if (lowerQuery.includes("color")) {
+    if (parsed.colors.length > 0) {
+      const colors = parsed.colors
+        .map((c) => `  ${c.name}: ${c.value}${c.usage ? ` (${c.usage})` : ""}`)
+        .join("\n");
+      return `Colors in the style guide:\n${colors}`;
+    }
+    if (values.colors.length > 0) {
+      return `Colors found: ${values.colors.join(", ")}`;
+    }
+    return "No colors defined in the style guide.";
+  }
+
+  // Font query
+  if (lowerQuery.includes("font") && !lowerQuery.includes("size")) {
+    if (values.fontFamilies.length > 0) {
+      return `Font families: ${values.fontFamilies.join(", ")}`;
+    }
+    return "No font families defined in the style guide.";
+  }
+
+  // Font size query
+  if (lowerQuery.includes("font size") || lowerQuery.includes("fontsize")) {
+    if (values.fontSizes.length > 0) {
+      return `Font sizes: ${values.fontSizes.join(", ")}`;
+    }
+    return "No font sizes defined in the style guide.";
+  }
+
+  // Spacing query
+  if (
+    lowerQuery.includes("spacing") ||
+    lowerQuery.includes("padding") ||
+    lowerQuery.includes("margin")
+  ) {
+    if (parsed.spacing.length > 0) {
+      const spacing = parsed.spacing
+        .map((s) => `  ${s.name}: ${s.value}`)
+        .join("\n");
+      return `Spacing values:\n${spacing}`;
+    }
+    return "No spacing values defined in the style guide.";
+  }
+
+  // Component query
+  if (
+    lowerQuery.includes("component") ||
+    lowerQuery.includes("button") ||
+    lowerQuery.includes("card")
+  ) {
+    if (parsed.components.length > 0) {
+      const components = parsed.components
+        .map((c) => `  ${c.name}: ${c.styles.join(", ")}`)
+        .join("\n");
+      return `Component styles:\n${components}`;
+    }
+    return "No component styles defined in the style guide.";
+  }
+
+  // Can't answer simply, need LLM
+  return null;
+}
+
+/**
+ * Returns a fallback answer when LLM is not available
+ */
+function getFallbackAnswer(query: string, styleGuide: string): string {
+  const values = extractStyleValues(styleGuide);
+  
+  return `Style Guide Summary:
+- Colors: ${values.colors.length > 0 ? values.colors.slice(0, 5).join(", ") : "None defined"}
+- Font Sizes: ${values.fontSizes.length > 0 ? values.fontSizes.join(", ") : "None defined"}
+- Font Families: ${values.fontFamilies.length > 0 ? values.fontFamilies.join(", ") : "None defined"}
+
+For more specific queries, please ensure Ollama is running on localhost:11434.`;
+}

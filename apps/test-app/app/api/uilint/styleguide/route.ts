@@ -1,24 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
-import { join } from "path";
-
-const STYLEGUIDE_DIR = ".uilint";
-const STYLEGUIDE_FILE = "styleguide.md";
-
-function getStyleGuidePath(): string {
-  return join(process.cwd(), STYLEGUIDE_DIR, STYLEGUIDE_FILE);
-}
+import {
+  readStyleGuideFromProject,
+  writeStyleGuide,
+  getDefaultStyleGuidePath,
+  styleGuideExists,
+} from "uilint-core/node";
 
 export async function GET() {
-  const stylePath = getStyleGuidePath();
-
   try {
-    if (!existsSync(stylePath)) {
+    const projectPath = process.cwd();
+    const exists = styleGuideExists(projectPath);
+
+    if (!exists) {
       return NextResponse.json({ exists: false, content: null });
     }
 
-    const content = await readFile(stylePath, "utf-8");
+    const content = await readStyleGuideFromProject(projectPath);
     return NextResponse.json({ exists: true, content });
   } catch (error) {
     console.error("[UILint API] Error reading style guide:", error);
@@ -37,16 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const dirPath = join(process.cwd(), STYLEGUIDE_DIR);
-    const stylePath = getStyleGuidePath();
+    const projectPath = process.cwd();
+    const stylePath = getDefaultStyleGuidePath(projectPath);
 
-    // Ensure directory exists
-    if (!existsSync(dirPath)) {
-      await mkdir(dirPath, { recursive: true });
-    }
-
-    // Write the file
-    await writeFile(stylePath, content, "utf-8");
+    await writeStyleGuide(stylePath, content);
 
     return NextResponse.json({ success: true });
   } catch (error) {

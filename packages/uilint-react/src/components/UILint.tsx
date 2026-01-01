@@ -8,11 +8,11 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import type { UILintIssue, ExtractedStyles } from "../types";
+import type { UILintIssue, ExtractedStyles } from "uilint-core";
+import { generateStyleGuideFromStyles as generateStyleGuide } from "uilint-core";
 import { scanDOM } from "../scanner/dom-scanner";
-import { isBrowser, getEnvironment } from "../scanner/environment";
+import { isBrowser } from "../scanner/environment";
 import { LLMClient } from "../analyzer/llm-client";
-import { generateStyleGuide } from "../styleguide/generator";
 import { Overlay } from "./Overlay";
 import { Highlighter } from "./Highlighter";
 

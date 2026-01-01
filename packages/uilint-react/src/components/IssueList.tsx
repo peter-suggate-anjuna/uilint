@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useUILint } from './UILint';
-import type { UILintIssue } from '../types';
+import type { UILintIssue } from 'uilint-core';
 
 export function IssueList() {
   const { issues, highlightedIssue, setHighlightedIssue } = useUILint();
