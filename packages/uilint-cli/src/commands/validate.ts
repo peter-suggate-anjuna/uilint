@@ -12,6 +12,7 @@ import {
   printError,
   printSuccess,
 } from "../utils/output.js";
+import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface ValidateOptions {
   code?: string;
@@ -43,14 +44,11 @@ export async function validate(options: ValidateOptions): Promise<void> {
     if (options.llm) {
       // Use LLM for more thorough validation
       spinner.text = "Validating with LLM...";
+      spinner.stop();
+      await ensureOllamaReady({ model: options.model });
+      spinner.start();
+      spinner.text = "Validating with LLM...";
       const client = new OllamaClient({ model: options.model });
-
-      const available = await client.isAvailable();
-      if (!available) {
-        spinner.fail("Ollama is not running");
-        printError("Make sure Ollama is running on localhost:11434");
-        process.exit(1);
-      }
 
       result = await client.validateCode(code, styleGuide);
     } else {

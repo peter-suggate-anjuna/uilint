@@ -6,6 +6,7 @@ import ora from "ora";
 import { OllamaClient, parseStyleGuide, extractStyleValues } from "uilint-core";
 import { readStyleGuideFromProject } from "uilint-core/node";
 import { printError, printJSON } from "../utils/output.js";
+import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface QueryOptions {
   styleguide?: string;
@@ -46,14 +47,11 @@ export async function query(
 
     // Use LLM for complex queries
     spinner.text = "Querying with LLM...";
+    spinner.stop();
+    await ensureOllamaReady({ model: options.model });
+    spinner.start();
+    spinner.text = "Querying with LLM...";
     const client = new OllamaClient({ model: options.model });
-
-    const available = await client.isAvailable();
-    if (!available) {
-      spinner.fail("Ollama is not running");
-      printError("Make sure Ollama is running on localhost:11434");
-      process.exit(1);
-    }
 
     const answer = await client.queryStyleGuide(queryText, styleGuide);
 

@@ -17,6 +17,7 @@ import {
 } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
 import { printSuccess, printError, printWarning } from "../utils/output.js";
+import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface UpdateOptions extends InputOptions {
   styleguide?: string;
@@ -48,14 +49,11 @@ export async function update(options: UpdateOptions): Promise<void> {
     if (options.llm) {
       // Use LLM to suggest updates
       spinner.text = "Analyzing styles with LLM...";
+      spinner.stop();
+      await ensureOllamaReady({ model: options.model });
+      spinner.start();
+      spinner.text = "Analyzing styles with LLM...";
       const client = new OllamaClient({ model: options.model });
-
-      const available = await client.isAvailable();
-      if (!available) {
-        spinner.fail("Ollama is not running");
-        printError("Make sure Ollama is running on localhost:11434");
-        process.exit(1);
-      }
 
       const styleSummary = createStyleSummary(snapshot.styles);
       const result = await client.analyzeStyles(styleSummary, existingContent);

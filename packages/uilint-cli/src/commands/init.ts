@@ -4,10 +4,15 @@
 
 import { join } from "path";
 import ora from "ora";
-import { OllamaClient, createStyleSummary, generateStyleGuideFromStyles } from "uilint-core";
+import {
+  OllamaClient,
+  createStyleSummary,
+  generateStyleGuideFromStyles,
+} from "uilint-core";
 import { writeStyleGuide, styleGuideExists } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
 import { printSuccess, printError, printWarning } from "../utils/output.js";
+import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface InitOptions extends InputOptions {
   output?: string;
@@ -21,12 +26,15 @@ export async function init(options: InitOptions): Promise<void> {
 
   try {
     const projectPath = process.cwd();
-    const outputPath = options.output || join(projectPath, ".uilint", "styleguide.md");
+    const outputPath =
+      options.output || join(projectPath, ".uilint", "styleguide.md");
 
     // Check if style guide already exists
     if (!options.force && styleGuideExists(projectPath)) {
       spinner.warn("Style guide already exists");
-      printWarning('Use --force to overwrite, or "uilint update" to merge new styles.');
+      printWarning(
+        'Use --force to overwrite, or "uilint update" to merge new styles.'
+      );
       process.exit(1);
     }
 
@@ -39,15 +47,11 @@ export async function init(options: InitOptions): Promise<void> {
     if (options.llm) {
       // Use LLM to generate a more polished style guide
       spinner.text = "Generating style guide with LLM...";
+      spinner.stop();
+      await ensureOllamaReady({ model: options.model });
+      spinner.start();
+      spinner.text = "Generating style guide with LLM...";
       const client = new OllamaClient({ model: options.model });
-
-      const available = await client.isAvailable();
-      if (!available) {
-        spinner.fail("Ollama is not running");
-        printError("Make sure Ollama is running on localhost:11434");
-        printWarning("Use without --llm to generate a basic style guide without LLM.");
-        process.exit(1);
-      }
 
       const styleSummary = createStyleSummary(snapshot.styles);
       const llmGuide = await client.generateStyleGuide(styleSummary);
@@ -78,4 +82,3 @@ export async function init(options: InitOptions): Promise<void> {
     process.exit(1);
   }
 }
-

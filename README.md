@@ -31,12 +31,14 @@ UILint scans your UI for design inconsistencies, auto-generates a style guide fr
 ### Prerequisites
 
 - Node.js 20+
-- [Ollama](https://ollama.ai) running locally with a model installed:
+- [Ollama](https://ollama.ai) installed locally (the CLI can auto-start it and auto-pull the model):
 
 ```bash
-# Install Ollama, then:
+# Install Ollama, then pull the default model:
 ollama pull qwen2.5-coder:7b
 ```
+
+If Ollama isn’t installed, the CLI will print install instructions; on macOS it can optionally offer to run `brew install ollama` (interactive TTY only).
 
 ### Installation
 

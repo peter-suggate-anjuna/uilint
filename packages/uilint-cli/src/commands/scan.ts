@@ -17,6 +17,7 @@ import {
   printStyleguideNotFound,
   printStyleguideFound,
 } from "../utils/output.js";
+import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface ScanOptions extends InputOptions {
   styleguide?: string;
@@ -53,15 +54,11 @@ export async function scan(options: ScanOptions): Promise<void> {
 
     // Call Ollama for analysis
     spinner.text = "Analyzing with LLM...";
+    spinner.stop();
+    await ensureOllamaReady({ model: options.model });
+    spinner.start();
+    spinner.text = "Analyzing with LLM...";
     const client = new OllamaClient({ model: options.model });
-
-    // Check if Ollama is available
-    const available = await client.isAvailable();
-    if (!available) {
-      spinner.fail("Ollama is not running");
-      printError("Make sure Ollama is running on localhost:11434");
-      process.exit(1);
-    }
 
     const result = await client.analyzeStyles(styleSummary, styleGuide);
 
