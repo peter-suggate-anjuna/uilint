@@ -57,16 +57,26 @@ const SESSION_START_SCRIPT = `#!/bin/bash
 
 echo "[UILint] Session start - clearing tracked files" >&2
 
+# Prefer local monorepo build when developing UILint itself.
+# Fall back to npx for normal consumers.
+uilint() {
+  if [ -f "packages/uilint-cli/dist/index.js" ]; then
+    node "packages/uilint-cli/dist/index.js" "$@"
+  else
+    npx uilint-cli "$@"
+  fi
+}
+
 # Read JSON input from stdin (required by hook protocol)
 cat > /dev/null
 
 # Clear session state
-result=$(npx uilint-cli session clear 2>&1)
+result=$(uilint session clear)
 status=$?
 
-echo "[UILint] Clear result: $result (exit: $status)" >&2
+echo "[UILint] Clear exit: $status" >&2
 
-if [ $status -eq 0 ]; then
+if [ $status -eq 0 ] && [ -n "$result" ]; then
   echo "$result"
 else
   echo '{"cleared":false}'
@@ -91,6 +101,16 @@ input=$(cat)
 
 echo "[UILint] afterFileEdit hook triggered" >&2
 
+# Prefer local monorepo build when developing UILint itself.
+# Fall back to npx for normal consumers.
+uilint() {
+  if [ -f "packages/uilint-cli/dist/index.js" ]; then
+    node "packages/uilint-cli/dist/index.js" "$@"
+  else
+    npx uilint-cli "$@"
+  fi
+}
+
 # Extract file_path using grep/sed (works without jq)
 file_path=$(echo "$input" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"file_path"[[:space:]]*:[[:space:]]*"\\([^"]*\\)"/\\1/')
 
@@ -104,10 +124,10 @@ fi
 
 # Track the file (session command filters for UI files internally)
 echo "[UILint] Tracking file: $file_path" >&2
-result=$(npx uilint-cli session track "$file_path" 2>&1)
+result=$(uilint session track "$file_path")
 status=$?
 
-echo "[UILint] Track result: $result (exit: $status)" >&2
+echo "[UILint] Track exit: $status" >&2
 
 if [ $status -eq 0 ] && [ -n "$result" ]; then
   out="$result"
@@ -133,6 +153,16 @@ input=$(cat)
 
 echo "[UILint] Stop input: $input" >&2
 
+# Prefer local monorepo build when developing UILint itself.
+# Fall back to npx for normal consumers.
+uilint() {
+  if [ -f "packages/uilint-cli/dist/index.js" ]; then
+    node "packages/uilint-cli/dist/index.js" "$@"
+  else
+    npx uilint-cli "$@"
+  fi
+}
+
 # Extract loop_count to prevent infinite loops
 loop_count=$(echo "$input" | grep -o '"loop_count"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
 loop_count=\${loop_count:-0}
@@ -148,15 +178,15 @@ fi
 
 # First check what files are tracked
 echo "[UILint] Checking tracked files..." >&2
-tracked=$(npx uilint-cli session list 2>&1)
+tracked=$(uilint session list)
 echo "[UILint] Tracked files: $tracked" >&2
 
 # Run validation with --hook flag for direct JSON output
 echo "[UILint] Running validation..." >&2
-result=$(npx uilint-cli session validate --hook 2>&1)
+result=$(uilint session validate --hook)
 status=$?
 
-echo "[UILint] Validation result (exit: $status): $result" >&2
+echo "[UILint] Validation exit: $status" >&2
 
 if [ $status -eq 0 ] && [ -n "$result" ]; then
   echo "$result"

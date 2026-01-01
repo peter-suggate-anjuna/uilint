@@ -3,8 +3,10 @@
  */
 
 import ora from "ora";
-import { validateCode, OllamaClient } from "uilint-core";
-import { readStyleGuideFromProject } from "uilint-core/node";
+import {
+  readStyleGuideFromProject,
+  validateCodeWithOptions,
+} from "uilint-core/node";
 import { getCodeInput } from "../utils/input.js";
 import {
   formatValidationIssues,
@@ -12,7 +14,6 @@ import {
   printError,
   printSuccess,
 } from "../utils/output.js";
-import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface ValidateOptions {
   code?: string;
@@ -39,22 +40,14 @@ export async function validate(options: ValidateOptions): Promise<void> {
       ? await readStyleGuideFromProject(options.styleguide)
       : await readStyleGuideFromProject(projectPath);
 
-    let result;
-
     if (options.llm) {
-      // Use LLM for more thorough validation
       spinner.text = "Validating with LLM...";
-      spinner.stop();
-      await ensureOllamaReady({ model: options.model });
-      spinner.start();
-      spinner.text = "Validating with LLM...";
-      const client = new OllamaClient({ model: options.model });
-
-      result = await client.validateCode(code, styleGuide);
-    } else {
-      // Use rule-based validation
-      result = validateCode(code, styleGuide);
     }
+
+    const result = await validateCodeWithOptions(code, styleGuide, {
+      llm: options.llm,
+      model: options.model,
+    });
 
     spinner.stop();
 
@@ -78,4 +71,3 @@ export async function validate(options: ValidateOptions): Promise<void> {
     process.exit(1);
   }
 }
-

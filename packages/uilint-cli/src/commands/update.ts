@@ -14,10 +14,10 @@ import {
   readStyleGuide,
   writeStyleGuide,
   findStyleGuidePath,
+  ensureOllamaReady,
 } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
 import { printSuccess, printError, printWarning } from "../utils/output.js";
-import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface UpdateOptions extends InputOptions {
   styleguide?: string;
@@ -116,4 +116,3 @@ export async function update(options: UpdateOptions): Promise<void> {
     process.exit(1);
   }
 }
-

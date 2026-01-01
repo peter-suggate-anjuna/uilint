@@ -9,10 +9,9 @@ import {
   createStyleSummary,
   generateStyleGuideFromStyles,
 } from "uilint-core";
-import { writeStyleGuide, styleGuideExists } from "uilint-core/node";
+import { ensureOllamaReady, writeStyleGuide, styleGuideExists } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
 import { printSuccess, printError, printWarning } from "../utils/output.js";
-import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface InitOptions extends InputOptions {
   output?: string;

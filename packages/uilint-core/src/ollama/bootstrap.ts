@@ -1,5 +1,5 @@
 /**
- * Ollama bootstrapping utilities for uilint-cli.
+ * Ollama bootstrapping utilities (Node.js only).
  *
  * Goals:
  * - Detect whether Ollama is installed.
@@ -8,8 +8,8 @@
  */
 
 import { spawn, spawnSync } from "child_process";
-import { OllamaClient } from "uilint-core";
 import readline from "readline";
+import { OllamaClient } from "./client.js";
 
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "qwen2.5-coder:7b";
@@ -23,7 +23,10 @@ function isInteractiveTTY(): boolean {
 }
 
 async function promptYesNo(question: string): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   return await new Promise<boolean>((resolve) => {
     rl.question(`${question} (y/N) `, (answer) => {
       rl.close();
@@ -35,7 +38,10 @@ async function promptYesNo(question: string): Promise<boolean> {
 
 export function isOllamaInstalled(): boolean {
   const result = spawnSync("ollama", ["--version"], { stdio: "ignore" });
-  if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
+  if (
+    result.error &&
+    (result.error as NodeJS.ErrnoException).code === "ENOENT"
+  ) {
     return false;
   }
   return result.status === 0;
@@ -43,7 +49,10 @@ export function isOllamaInstalled(): boolean {
 
 function isBrewInstalled(): boolean {
   const result = spawnSync("brew", ["--version"], { stdio: "ignore" });
-  if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
+  if (
+    result.error &&
+    (result.error as NodeJS.ErrnoException).code === "ENOENT"
+  ) {
     return false;
   }
   return result.status === 0;
@@ -76,7 +85,9 @@ async function maybeInstallOllamaWithBrew(): Promise<boolean> {
     return false;
   }
 
-  const ok = await promptYesNo("Ollama is not installed. Install with Homebrew now?");
+  const ok = await promptYesNo(
+    "Ollama is not installed. Install with Homebrew now?"
+  );
   if (!ok) return false;
 
   await new Promise<void>((resolve, reject) => {
@@ -107,23 +118,30 @@ export async function ensureOllamaInstalledOrExplain(): Promise<void> {
   throw new Error([...getInstallInstructions(), ...extra].join("\n"));
 }
 
-export async function ensureOllamaRunning(options?: { timeoutMs?: number }): Promise<void> {
+export async function ensureOllamaRunning(options?: {
+  timeoutMs?: number;
+  baseUrl?: string;
+}): Promise<void> {
   await ensureOllamaInstalledOrExplain();
 
-  const client = new OllamaClient({ baseUrl: DEFAULT_OLLAMA_BASE_URL });
+  const baseUrl = options?.baseUrl || DEFAULT_OLLAMA_BASE_URL;
+  const client = new OllamaClient({ baseUrl });
   const timeoutMs = options?.timeoutMs ?? 10_000;
 
   if (await client.isAvailable()) return;
 
   // Best-effort background start. We do not stop it later.
   try {
-    const child = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
+    const child = spawn("ollama", ["serve"], {
+      detached: true,
+      stdio: "ignore",
+    });
     child.unref();
   } catch (err) {
     throw new Error(
-      `Failed to start Ollama automatically.\n\n${getInstallInstructions().join("\n")}\n\nDetails: ${
-        err instanceof Error ? err.message : String(err)
-      }`
+      `Failed to start Ollama automatically.\n\n${getInstallInstructions().join(
+        "\n"
+      )}\n\nDetails: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
@@ -143,8 +161,8 @@ export async function ensureOllamaRunning(options?: { timeoutMs?: number }): Pro
   );
 }
 
-async function fetchOllamaTags(): Promise<string[]> {
-  const res = await fetch(`${DEFAULT_OLLAMA_BASE_URL}/api/tags`, {
+async function fetchOllamaTags(baseUrl: string): Promise<string[]> {
+  const res = await fetch(`${baseUrl}/api/tags`, {
     method: "GET",
     signal: AbortSignal.timeout(5000),
   });
@@ -160,11 +178,15 @@ async function fetchOllamaTags(): Promise<string[]> {
   return names;
 }
 
-export async function ensureOllamaModelPulled(model?: string): Promise<void> {
-  const desired = (model || DEFAULT_MODEL).trim();
+export async function ensureOllamaModelPulled(options?: {
+  model?: string;
+  baseUrl?: string;
+}): Promise<void> {
+  const desired = (options?.model || DEFAULT_MODEL).trim();
   if (!desired) return;
 
-  const tags = await fetchOllamaTags();
+  const baseUrl = options?.baseUrl || DEFAULT_OLLAMA_BASE_URL;
+  const tags = await fetchOllamaTags(baseUrl);
   if (tags.includes(desired)) return;
 
   await new Promise<void>((resolve, reject) => {
@@ -176,18 +198,25 @@ export async function ensureOllamaModelPulled(model?: string): Promise<void> {
     });
   });
 
-  const tagsAfter = await fetchOllamaTags();
+  const tagsAfter = await fetchOllamaTags(baseUrl);
   if (!tagsAfter.includes(desired)) {
-    throw new Error(`Model ${desired} did not appear in Ollama tags after pulling.`);
+    throw new Error(
+      `Model ${desired} did not appear in Ollama tags after pulling.`
+    );
   }
 }
 
 export async function ensureOllamaReady(options?: {
   model?: string;
   timeoutMs?: number;
+  baseUrl?: string;
 }): Promise<void> {
-  await ensureOllamaRunning({ timeoutMs: options?.timeoutMs });
-  await ensureOllamaModelPulled(options?.model);
+  await ensureOllamaRunning({
+    timeoutMs: options?.timeoutMs,
+    baseUrl: options?.baseUrl,
+  });
+  await ensureOllamaModelPulled({
+    model: options?.model,
+    baseUrl: options?.baseUrl,
+  });
 }
-
-

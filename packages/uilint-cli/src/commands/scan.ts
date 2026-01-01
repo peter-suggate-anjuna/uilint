@@ -5,6 +5,7 @@
 import ora from "ora";
 import { OllamaClient, createStyleSummary } from "uilint-core";
 import {
+  ensureOllamaReady,
   readStyleGuideFromProject,
   findStyleGuidePath,
   STYLEGUIDE_PATHS,
@@ -17,7 +18,6 @@ import {
   printStyleguideNotFound,
   printStyleguideFound,
 } from "../utils/output.js";
-import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface ScanOptions extends InputOptions {
   styleguide?: string;

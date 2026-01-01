@@ -1,12 +1,21 @@
 /**
  * UILint Core - Node.js-specific exports
- * 
+ *
  * This entry point includes Node.js-only features like JSDOM parsing
  * and filesystem operations.
  */
 
 // Re-export everything from main entry
 export * from "./index.js";
+
+// Node.js-specific: Ollama bootstrap helpers (LLM readiness)
+export {
+  isOllamaInstalled,
+  ensureOllamaInstalledOrExplain,
+  ensureOllamaRunning,
+  ensureOllamaModelPulled,
+  ensureOllamaReady,
+} from "./ollama/bootstrap.js";
 
 // Node.js-specific: HTML parser with JSDOM
 export {
@@ -16,6 +25,9 @@ export {
   readStdin,
   hasStdin,
 } from "./scanner/html-parser.js";
+
+// Node.js-specific: validation orchestration
+export { validateCodeWithOptions } from "./validation/node-validate.js";
 
 // Node.js-specific: Filesystem operations
 export {
@@ -27,4 +39,3 @@ export {
   getDefaultStyleGuidePath,
   styleGuideExists,
 } from "./styleguide/reader.js";
-

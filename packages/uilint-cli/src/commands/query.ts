@@ -4,9 +4,8 @@
 
 import ora from "ora";
 import { OllamaClient, parseStyleGuide, extractStyleValues } from "uilint-core";
-import { readStyleGuideFromProject } from "uilint-core/node";
+import { ensureOllamaReady, readStyleGuideFromProject } from "uilint-core/node";
 import { printError, printJSON } from "../utils/output.js";
-import { ensureOllamaReady } from "../utils/ollama.js";
 
 export interface QueryOptions {
   styleguide?: string;
@@ -132,4 +131,3 @@ function getSimpleAnswer(queryText: string, styleGuide: string): string | null {
   // Can't answer simply, need LLM
   return null;
 }
-
