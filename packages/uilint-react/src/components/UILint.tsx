@@ -60,9 +60,16 @@ export function UILint({
   const [highlightedIssue, setHighlightedIssue] = useState<UILintIssue | null>(
     null
   );
+  // Track if we're mounted on the client to avoid hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
 
   const llmClient = useRef(new LLMClient({ apiEndpoint }));
   const hasInitialized = useRef(false);
+
+  // Set mounted state after hydration to avoid SSR mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Check if style guide exists
   const checkStyleGuide = useCallback(async () => {
@@ -158,8 +165,8 @@ export function UILint({
     setHighlightedIssue,
   };
 
-  // Don't render overlay in test/node environments
-  const shouldRenderOverlay = enabled && isBrowser();
+  // Don't render overlay until client is mounted (prevents hydration mismatch)
+  const shouldRenderOverlay = enabled && isMounted;
 
   return (
     <UILintContext.Provider value={contextValue}>

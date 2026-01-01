@@ -26,12 +26,12 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "jsdom": "^25.0.1"
+    "jsdom": "^27.4.0"
   },
   "devDependencies": {
-    "@types/jsdom": "^21.1.7",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.2"
+    "@types/jsdom": "^27.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "ui",

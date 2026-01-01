@@ -11,8 +11,8 @@
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typescript": "^5.7.2"
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@9.14.2",
   "engines": {
