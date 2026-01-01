@@ -38,4 +38,3 @@
 - **Cards**: rounded-xl, shadow-sm, p-6, bg-white
 - **Inputs**: rounded-lg, border border-gray-300, px-3 py-2
 - **Badges**: rounded-full, px-2 py-1, text-sm font-medium
-

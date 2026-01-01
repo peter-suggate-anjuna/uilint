@@ -9,6 +9,12 @@ import { update } from "./commands/update.js";
 import { validate } from "./commands/validate.js";
 import { query } from "./commands/query.js";
 import { install } from "./commands/install.js";
+import {
+  sessionClear,
+  sessionTrack,
+  sessionValidate,
+  sessionList,
+} from "./commands/session.js";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -137,6 +143,42 @@ program
     await install({
       force: options.force,
     });
+  });
+
+// Session command (for Cursor hooks)
+const sessionCmd = program
+  .command("session")
+  .description(
+    "Manage file tracking for agentic sessions (used by Cursor hooks)"
+  );
+
+sessionCmd
+  .command("clear")
+  .description("Clear tracked files (called at start of agent turn)")
+  .action(async () => {
+    await sessionClear();
+  });
+
+sessionCmd
+  .command("track <file>")
+  .description("Track a file edit (called on each file edit)")
+  .action(async (file: string) => {
+    await sessionTrack(file);
+  });
+
+sessionCmd
+  .command("validate")
+  .description("Validate all tracked files (called on agent stop)")
+  .option("--hook", "Output in Cursor hook format (followup_message JSON only)")
+  .action(async (options: { hook?: boolean }) => {
+    await sessionValidate({ hookFormat: options.hook });
+  });
+
+sessionCmd
+  .command("list")
+  .description("List tracked files (for debugging)")
+  .action(async () => {
+    await sessionList();
   });
 
 program.parse();
