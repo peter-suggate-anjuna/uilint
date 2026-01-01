@@ -4,9 +4,19 @@
 
 import ora from "ora";
 import { OllamaClient, createStyleSummary } from "uilint-core";
-import { readStyleGuideFromProject } from "uilint-core/node";
+import {
+  readStyleGuideFromProject,
+  findStyleGuidePath,
+  STYLEGUIDE_PATHS,
+} from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
-import { formatIssues, printJSON, printError } from "../utils/output.js";
+import {
+  formatIssues,
+  printJSON,
+  printError,
+  printStyleguideNotFound,
+  printStyleguideFound,
+} from "../utils/output.js";
 
 export interface ScanOptions extends InputOptions {
   styleguide?: string;
@@ -23,10 +33,20 @@ export async function scan(options: ScanOptions): Promise<void> {
     spinner.text = `Scanning ${snapshot.elementCount} elements...`;
 
     // Get style guide
-    const projectPath = process.cwd();
-    const styleGuide = options.styleguide
-      ? await readStyleGuideFromProject(options.styleguide)
-      : await readStyleGuideFromProject(projectPath);
+    const projectPath = options.styleguide || process.cwd();
+    const styleguideLocation = findStyleGuidePath(projectPath);
+
+    let styleGuide: string | null = null;
+    if (styleguideLocation) {
+      styleGuide = await readStyleGuideFromProject(projectPath);
+      spinner.stop();
+      printStyleguideFound(styleguideLocation);
+      spinner.start();
+    } else {
+      spinner.stop();
+      printStyleguideNotFound(STYLEGUIDE_PATHS, projectPath);
+      spinner.start();
+    }
 
     // Create style summary
     const styleSummary = createStyleSummary(snapshot.styles);
@@ -69,4 +89,3 @@ export async function scan(options: ScanOptions): Promise<void> {
     process.exit(1);
   }
 }
-

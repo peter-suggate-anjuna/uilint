@@ -19,6 +19,7 @@ export {
 
 // Node.js-specific: Filesystem operations
 export {
+  STYLEGUIDE_PATHS,
   findStyleGuidePath,
   readStyleGuide,
   readStyleGuideFromProject,

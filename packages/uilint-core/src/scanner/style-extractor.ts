@@ -24,7 +24,8 @@ export function extractStyles(
   const elements = root.querySelectorAll("*");
 
   elements.forEach((element) => {
-    if (!(element instanceof HTMLElement || element.nodeType === 1)) return;
+    // nodeType === 1 means Element node (works in both browser and JSDOM)
+    if (element.nodeType !== 1) return;
 
     const computed = getComputedStyle(element);
 

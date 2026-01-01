@@ -8,7 +8,8 @@
     "build": "pnpm -r build",
     "test": "pnpm --filter test-app test",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "uilint": "node packages/uilint-cli/dist/index.js"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

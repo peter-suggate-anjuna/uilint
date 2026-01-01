@@ -6,7 +6,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, dirname } from "path";
 
-const STYLEGUIDE_PATHS = [
+export const STYLEGUIDE_PATHS = [
   ".uilint/styleguide.md",
   "styleguide.md",
   ".uilint/style-guide.md",

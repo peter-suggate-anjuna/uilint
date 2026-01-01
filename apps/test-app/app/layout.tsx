@@ -1,10 +1,10 @@
-import type { Metadata } from 'next';
-import { UILint } from 'uilint-react';
-import './globals.css';
+import type { Metadata } from "next";
+import { UILint } from "uilint-react";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'UILint Test App',
-  description: 'Test application for UILint component',
+  title: "UILint Test App",
+  description: "Test application for UILint component",
 };
 
 export default function RootLayout({
@@ -16,8 +16,8 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <UILint
-          enabled={process.env.NODE_ENV !== 'production'}
-          position="bottom-left"
+          enabled={process.env.NODE_ENV !== "production"}
+          position="top-right"
           autoScan={false}
         >
           {children}
@@ -26,4 +26,3 @@ export default function RootLayout({
     </html>
   );
 }
-

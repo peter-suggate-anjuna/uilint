@@ -94,10 +94,12 @@ export function isJSON(str: string): boolean {
  * Reads input from stdin
  */
 export async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
   
   return new Promise((resolve, reject) => {
-    process.stdin.on("data", (chunk) => chunks.push(chunk));
+    process.stdin.on("data", (chunk: Buffer | string) => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    });
     process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     process.stdin.on("error", reject);
   });
