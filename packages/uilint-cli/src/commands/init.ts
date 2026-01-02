@@ -3,7 +3,6 @@
  */
 
 import { dirname, join, resolve } from "path";
-import ora from "ora";
 import {
   OllamaClient,
   createStyleSummary,
@@ -16,7 +15,17 @@ import {
   readTailwindThemeTokens,
 } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
-import { printSuccess, printError, printWarning } from "../utils/output.js";
+import {
+  intro,
+  outro,
+  select,
+  confirm,
+  withSpinner,
+  note,
+  logWarning,
+  logError,
+  pc,
+} from "../utils/prompts.js";
 
 export interface InitOptions extends InputOptions {
   output?: string;
@@ -26,7 +35,7 @@ export interface InitOptions extends InputOptions {
 }
 
 export async function init(options: InitOptions): Promise<void> {
-  const spinner = ora("Initializing style guide...").start();
+  intro("Initialize Style Guide");
 
   try {
     const projectPath = process.cwd();
@@ -34,17 +43,62 @@ export async function init(options: InitOptions): Promise<void> {
       options.output || join(projectPath, ".uilint", "styleguide.md");
 
     // Check if style guide already exists
-    if (!options.force && styleGuideExists(projectPath)) {
-      spinner.warn("Style guide already exists");
-      printWarning(
-        'Use --force to overwrite, or "uilint update" to merge new styles.'
-      );
-      process.exit(1);
+    if (styleGuideExists(projectPath)) {
+      if (options.force) {
+        logWarning("Existing styleguide will be overwritten (--force)");
+      } else {
+        const overwrite = await confirm({
+          message: `A styleguide already exists at ${pc.dim(outputPath)}. Overwrite it?`,
+          initialValue: false,
+        });
+
+        if (!overwrite) {
+          note(
+            `Use ${pc.cyan("uilint update")} to merge new styles into your existing guide.`,
+            "Tip"
+          );
+          outro("Cancelled - existing styleguide preserved");
+          return;
+        }
+      }
+    }
+
+    // Determine generation mode
+    let useLLM = options.llm;
+    
+    if (useLLM === undefined && !options.inputFile && !options.inputJson) {
+      // Interactive mode - ask user
+      const mode = await select<"basic" | "llm">({
+        message: "How would you like to generate the styleguide?",
+        options: [
+          {
+            value: "basic",
+            label: "Basic extraction",
+            hint: "Fast, no LLM required",
+          },
+          {
+            value: "llm",
+            label: "LLM-enhanced",
+            hint: "Uses Ollama for smarter organization",
+          },
+        ],
+        initialValue: "basic",
+      });
+      useLLM = mode === "llm";
     }
 
     // Get input
-    const snapshot = await getInput(options);
-    spinner.text = `Detected ${snapshot.elementCount} elements...`;
+    let snapshot;
+    try {
+      snapshot = await withSpinner("Analyzing project structure", async () => {
+        return await getInput(options);
+      });
+    } catch {
+      logError("No input provided. Use --input-file or pipe HTML to stdin.");
+      process.exit(1);
+    }
+
+    note(`Found ${pc.cyan(String(snapshot.elementCount))} elements to analyze`, "Analysis");
 
     const tailwindSearchDir = options.inputFile
       ? dirname(resolve(projectPath, options.inputFile))
@@ -53,50 +107,64 @@ export async function init(options: InitOptions): Promise<void> {
 
     let styleGuideContent: string;
 
-    if (options.llm) {
+    if (useLLM) {
       // Use LLM to generate a more polished style guide
-      spinner.text = "Generating style guide with LLM...";
-      spinner.stop();
-      await ensureOllamaReady({ model: options.model });
-      spinner.start();
-      spinner.text = "Generating style guide with LLM...";
-      const client = new OllamaClient({ model: options.model });
-
-      const styleSummary = createStyleSummary(snapshot.styles, {
-        html: snapshot.html,
-        tailwindTheme,
+      await withSpinner("Preparing Ollama", async () => {
+        await ensureOllamaReady({ model: options.model });
       });
-      const llmGuide = await client.generateStyleGuide(styleSummary);
 
-      if (!llmGuide) {
-        spinner.warn("LLM generation failed, falling back to basic generation");
-        styleGuideContent = generateStyleGuideFromStyles(snapshot.styles, {
-          html: snapshot.html,
-          tailwindTheme,
-        });
-      } else {
-        styleGuideContent = llmGuide;
-      }
+      styleGuideContent = await withSpinner(
+        "Generating styleguide with LLM",
+        async () => {
+          const client = new OllamaClient({ model: options.model });
+          const styleSummary = createStyleSummary(snapshot.styles, {
+            html: snapshot.html,
+            tailwindTheme,
+          });
+          const llmGuide = await client.generateStyleGuide(styleSummary);
+
+          if (!llmGuide) {
+            logWarning("LLM generation failed, using basic extraction");
+            return generateStyleGuideFromStyles(snapshot.styles, {
+              html: snapshot.html,
+              tailwindTheme,
+            });
+          }
+          return llmGuide;
+        }
+      );
     } else {
       // Generate basic style guide from extracted styles
-      spinner.text = "Generating style guide from detected styles...";
-      styleGuideContent = generateStyleGuideFromStyles(snapshot.styles, {
-        html: snapshot.html,
-        tailwindTheme,
-      });
+      styleGuideContent = await withSpinner(
+        "Extracting styles",
+        async () => {
+          return generateStyleGuideFromStyles(snapshot.styles, {
+            html: snapshot.html,
+            tailwindTheme,
+          });
+        }
+      );
     }
 
     // Write the style guide
-    await writeStyleGuide(outputPath, styleGuideContent);
+    await withSpinner("Writing styleguide", async () => {
+      await writeStyleGuide(outputPath, styleGuideContent);
+    });
 
-    spinner.stop();
-    printSuccess(`Style guide created at ${outputPath}`);
-    console.log("\nNext steps:");
-    console.log("  1. Review and edit the generated style guide");
-    console.log("  2. Run 'uilint scan' to check for inconsistencies");
+    note(
+      [
+        `${pc.green("Created:")} ${outputPath}`,
+        "",
+        `${pc.dim("Next steps:")}`,
+        `  1. Review and customize the generated styleguide`,
+        `  2. Run ${pc.cyan("uilint scan")} to check for inconsistencies`,
+      ].join("\n"),
+      "Success"
+    );
+
+    outro("Styleguide initialized!");
   } catch (error) {
-    spinner.fail("Initialization failed");
-    printError(error instanceof Error ? error.message : "Unknown error");
+    logError(error instanceof Error ? error.message : "Initialization failed");
     process.exit(1);
   }
 }

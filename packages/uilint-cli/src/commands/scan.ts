@@ -3,8 +3,7 @@
  */
 
 import { dirname, resolve } from "path";
-import ora from "ora";
-import { OllamaClient, createStyleSummary } from "uilint-core";
+import { OllamaClient, createStyleSummary, type UILintIssue } from "uilint-core";
 import {
   ensureOllamaReady,
   readStyleGuideFromProject,
@@ -14,12 +13,17 @@ import {
 } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
 import {
-  formatIssues,
-  printJSON,
-  printError,
-  printStyleguideNotFound,
-  printStyleguideFound,
-} from "../utils/output.js";
+  intro,
+  outro,
+  withSpinner,
+  note,
+  logInfo,
+  logWarning,
+  logError,
+  logSuccess,
+  pc,
+} from "../utils/prompts.js";
+import { printJSON } from "../utils/output.js";
 
 export interface ScanOptions extends InputOptions {
   styleguide?: string;
@@ -27,13 +31,80 @@ export interface ScanOptions extends InputOptions {
   model?: string;
 }
 
+/**
+ * Format issues for clack-styled output
+ */
+function formatIssuesClack(issues: UILintIssue[]): string {
+  if (issues.length === 0) {
+    return pc.green("✓ No UI consistency issues found");
+  }
+
+  const lines: string[] = [];
+
+  issues.forEach((issue, index) => {
+    const icon = getTypeIcon(issue.type);
+    const typeLabel = pc.dim(`[${issue.type}]`);
+    lines.push(`${pc.yellow(String(index + 1))}. ${icon} ${typeLabel} ${issue.message}`);
+
+    if (issue.currentValue && issue.expectedValue) {
+      lines.push(
+        `   ${pc.red(issue.currentValue)} ${pc.dim("→")} ${pc.green(issue.expectedValue)}`
+      );
+    } else if (issue.currentValue) {
+      lines.push(`   ${pc.dim("Value:")} ${issue.currentValue}`);
+    }
+
+    if (issue.suggestion) {
+      lines.push(`   ${pc.cyan("💡")} ${pc.dim(issue.suggestion)}`);
+    }
+  });
+
+  return lines.join("\n");
+}
+
+function getTypeIcon(type: string): string {
+  const icons: Record<string, string> = {
+    color: "🎨",
+    typography: "📝",
+    spacing: "📏",
+    component: "🧩",
+    responsive: "📱",
+    accessibility: "♿",
+  };
+  return icons[type] || "•";
+}
+
 export async function scan(options: ScanOptions): Promise<void> {
-  const spinner = ora("Scanning for UI inconsistencies...").start();
+  // For JSON output, skip the fancy UI
+  const isJsonOutput = options.output === "json";
+
+  if (!isJsonOutput) {
+    intro("Scan for UI Issues");
+  }
 
   try {
     // Get input
-    const snapshot = await getInput(options);
-    spinner.text = `Scanning ${snapshot.elementCount} elements...`;
+    let snapshot;
+    try {
+      if (isJsonOutput) {
+        snapshot = await getInput(options);
+      } else {
+        snapshot = await withSpinner("Parsing input", async () => {
+          return await getInput(options);
+        });
+      }
+    } catch {
+      if (isJsonOutput) {
+        printJSON({ error: "No input provided", issues: [] });
+      } else {
+        logError("No input provided. Use --input-file or pipe HTML to stdin.");
+      }
+      process.exit(1);
+    }
+
+    if (!isJsonOutput) {
+      logInfo(`Scanning ${pc.cyan(String(snapshot.elementCount))} elements`);
+    }
 
     // Get style guide
     const projectPath = options.styleguide || process.cwd();
@@ -42,13 +113,24 @@ export async function scan(options: ScanOptions): Promise<void> {
     let styleGuide: string | null = null;
     if (styleguideLocation) {
       styleGuide = await readStyleGuideFromProject(projectPath);
-      spinner.stop();
-      printStyleguideFound(styleguideLocation);
-      spinner.start();
+      if (!isJsonOutput) {
+        logSuccess(`Using styleguide: ${pc.dim(styleguideLocation)}`);
+      }
     } else {
-      spinner.stop();
-      printStyleguideNotFound(STYLEGUIDE_PATHS, projectPath);
-      spinner.start();
+      if (!isJsonOutput) {
+        logWarning("No styleguide found");
+        note(
+          [
+            `Searched in: ${projectPath}`,
+            "",
+            "Looked for:",
+            ...STYLEGUIDE_PATHS.map((p) => `  • ${p}`),
+            "",
+            `Run ${pc.cyan("uilint init")} to create one.`,
+          ].join("\n"),
+          "Missing Styleguide"
+        );
+      }
     }
 
     // Create style summary
@@ -61,28 +143,42 @@ export async function scan(options: ScanOptions): Promise<void> {
       tailwindTheme,
     });
 
+    // Prepare Ollama
+    if (!isJsonOutput) {
+      await withSpinner("Preparing Ollama", async () => {
+        await ensureOllamaReady({ model: options.model });
+      });
+    } else {
+      await ensureOllamaReady({ model: options.model });
+    }
+
     // Call Ollama for analysis
-    spinner.text = "Analyzing with LLM...";
-    spinner.stop();
-    await ensureOllamaReady({ model: options.model });
-    spinner.start();
-    spinner.text = "Analyzing with LLM...";
     const client = new OllamaClient({ model: options.model });
+    let result;
 
-    const result = await client.analyzeStyles(styleSummary, styleGuide);
-
-    spinner.stop();
+    if (isJsonOutput) {
+      result = await client.analyzeStyles(styleSummary, styleGuide);
+    } else {
+      result = await withSpinner("Analyzing with LLM", async () => {
+        return await client.analyzeStyles(styleSummary, styleGuide);
+      });
+    }
 
     // Output results
-    if (options.output === "json") {
+    if (isJsonOutput) {
       printJSON({
         issues: result.issues,
         analysisTime: result.analysisTime,
         elementCount: snapshot.elementCount,
       });
     } else {
-      console.log(formatIssues(result.issues));
-      console.log(`\nAnalysis completed in ${result.analysisTime}ms`);
+      if (result.issues.length === 0) {
+        logSuccess("No issues found!");
+        outro(`Scan completed in ${result.analysisTime}ms`);
+      } else {
+        note(formatIssuesClack(result.issues), `Found ${result.issues.length} issue(s)`);
+        outro(`Scan completed in ${result.analysisTime}ms`);
+      }
     }
 
     // Exit with error code if issues found
@@ -90,8 +186,11 @@ export async function scan(options: ScanOptions): Promise<void> {
       process.exit(1);
     }
   } catch (error) {
-    spinner.fail("Scan failed");
-    printError(error instanceof Error ? error.message : "Unknown error");
+    if (options.output === "json") {
+      printJSON({ error: error instanceof Error ? error.message : "Unknown error", issues: [] });
+    } else {
+      logError(error instanceof Error ? error.message : "Scan failed");
+    }
     process.exit(1);
   }
 }

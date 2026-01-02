@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "uilint": {
+      "command": "npx",
+      "args": [
+        "uilint-mcp"
+      ]
+    }
+  }
+}

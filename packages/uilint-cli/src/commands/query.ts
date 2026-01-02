@@ -2,7 +2,6 @@
  * Query command - queries the style guide for specific rules
  */
 
-import ora from "ora";
 import { OllamaClient, parseStyleGuide, extractStyleValues } from "uilint-core";
 import {
   ensureOllamaReady,
@@ -10,7 +9,15 @@ import {
   readStyleGuideFromProject,
 } from "uilint-core/node";
 import { existsSync } from "fs";
-import { printError, printJSON } from "../utils/output.js";
+import {
+  intro,
+  outro,
+  withSpinner,
+  note,
+  logError,
+  pc,
+} from "../utils/prompts.js";
+import { printJSON } from "../utils/output.js";
 
 export interface QueryOptions {
   styleguide?: string;
@@ -22,12 +29,17 @@ export async function query(
   queryText: string,
   options: QueryOptions
 ): Promise<void> {
-  const spinner = ora("Querying style guide...").start();
+  const isJsonOutput = options.output === "json";
+
+  if (!isJsonOutput) {
+    intro("Query Style Guide");
+  }
 
   try {
     // Get style guide
     const projectPath = process.cwd();
     let styleGuide: string | null = null;
+
     if (options.styleguide) {
       if (existsSync(options.styleguide)) {
         styleGuide = await readStyleGuide(options.styleguide);
@@ -39,43 +51,65 @@ export async function query(
     }
 
     if (!styleGuide) {
-      spinner.fail("No style guide found");
-      printError('Run "uilint init" first to create a style guide.');
+      if (isJsonOutput) {
+        printJSON({ query: queryText, error: "No style guide found" });
+      } else {
+        logError("No style guide found");
+        note(
+          `Run ${pc.cyan("uilint init")} to create a styleguide first.`,
+          "Tip"
+        );
+      }
       process.exit(1);
     }
 
     // Check if we can answer without LLM
     const simpleAnswer = getSimpleAnswer(queryText, styleGuide);
     if (simpleAnswer) {
-      spinner.stop();
-      if (options.output === "json") {
+      if (isJsonOutput) {
         printJSON({ query: queryText, answer: simpleAnswer });
       } else {
-        console.log(simpleAnswer);
+        note(simpleAnswer, "Answer");
+        outro("Query complete");
       }
       return;
     }
 
     // Use LLM for complex queries
-    spinner.text = "Querying with LLM...";
-    spinner.stop();
-    await ensureOllamaReady({ model: options.model });
-    spinner.start();
-    spinner.text = "Querying with LLM...";
+    if (!isJsonOutput) {
+      await withSpinner("Preparing Ollama", async () => {
+        await ensureOllamaReady({ model: options.model });
+      });
+    } else {
+      await ensureOllamaReady({ model: options.model });
+    }
+
     const client = new OllamaClient({ model: options.model });
+    let answer: string;
 
-    const answer = await client.queryStyleGuide(queryText, styleGuide);
+    if (isJsonOutput) {
+      answer = await client.queryStyleGuide(queryText, styleGuide);
+    } else {
+      answer = await withSpinner("Querying with LLM", async () => {
+        return await client.queryStyleGuide(queryText, styleGuide);
+      });
+    }
 
-    spinner.stop();
-
-    if (options.output === "json") {
+    if (isJsonOutput) {
       printJSON({ query: queryText, answer });
     } else {
-      console.log(answer);
+      note(answer, "Answer");
+      outro("Query complete");
     }
   } catch (error) {
-    spinner.fail("Query failed");
-    printError(error instanceof Error ? error.message : "Unknown error");
+    if (isJsonOutput) {
+      printJSON({
+        query: queryText,
+        error: error instanceof Error ? error.message : "Query failed",
+      });
+    } else {
+      logError(error instanceof Error ? error.message : "Query failed");
+    }
     process.exit(1);
   }
 }

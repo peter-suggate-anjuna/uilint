@@ -9,6 +9,7 @@ import {
 import { findStyleGuidePath, readStyleGuide } from "uilint-core/node";
 import { queryStyleGuide } from "./tools/query-styleguide.js";
 import { scanSnippet } from "./tools/scan-snippet.js";
+import { scanFile, type FileAnalysisResult } from "./tools/scan-file.js";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -85,6 +86,31 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["markup"],
         },
       },
+      {
+        name: "scan_file",
+        description:
+          "Scan a UI file (TSX, JSX, HTML) for consistency issues against the style guide. Reads the file from disk and analyzes it with an LLM. Use this after editing UI files to check for style violations.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            filePath: {
+              type: "string",
+              description:
+                "Path to the file to scan. Can be absolute or relative to projectPath.",
+            },
+            projectPath: {
+              type: "string",
+              description:
+                "Path to the project root (to find .uilint/styleguide.md and resolve relative file paths)",
+            },
+            model: {
+              type: "string",
+              description: "Ollama model to use (optional)",
+            },
+          },
+          required: ["filePath"],
+        },
+      },
     ],
   };
 });
@@ -135,6 +161,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "scan_file": {
+        const filePath = args?.filePath as string;
+        if (!filePath) {
+          return {
+            content: [
+              { type: "text", text: "Error: filePath parameter is required" },
+            ],
+            isError: true,
+          };
+        }
+        const model = args?.model as string | undefined;
+        const result = await scanFile(filePath, styleGuide, {
+          projectPath,
+          model,
+        });
+
+        // Format the result nicely
+        if (result.error) {
+          return {
+            content: [{ type: "text", text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
+        if (result.issues.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `✓ No UI consistency issues found in ${filePath}\n\nAnalysis time: ${result.analysisTime}ms`,
+              },
+            ],
+          };
+        }
+
+        // Format issues
+        const issueLines = result.issues.map((issue, i) => {
+          let line = `${i + 1}. [${issue.type}] ${issue.message}`;
+          if (issue.currentValue && issue.expectedValue) {
+            line += `\n   ${issue.currentValue} → ${issue.expectedValue}`;
+          }
+          if (issue.suggestion) {
+            line += `\n   💡 ${issue.suggestion}`;
+          }
+          return line;
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found ${result.issues.length} issue(s) in ${filePath}:\n\n${issueLines.join("\n\n")}\n\nAnalysis time: ${result.analysisTime}ms`,
+            },
+          ],
         };
       }
 

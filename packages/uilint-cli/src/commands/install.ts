@@ -1,10 +1,9 @@
 /**
- * Install command - installs Cursor hooks for UILint session scanning
+ * Install command - interactive setup wizard for UILint
  *
- * Sets up three hooks:
- * - beforeSubmitPrompt: Clear tracked files at start of agent turn
- * - afterFileEdit: Track file edits (UI files only)
- * - stop: Scan tracked markup files and return followup_message for auto-fix
+ * Offers two integration modes:
+ * - MCP Server (stdio): Registers uilint-mcp in .cursor/mcp.json
+ * - Cursor Hooks: Sets up beforeSubmitPrompt, afterFileEdit, and stop hooks
  */
 
 import {
@@ -17,15 +16,24 @@ import {
 } from "fs";
 import { join } from "path";
 import {
-  printSuccess,
-  printError,
-  printWarning,
-  printInfo,
-} from "../utils/output.js";
+  intro,
+  outro,
+  select,
+  confirm,
+  withSpinner,
+  note,
+  logSuccess,
+  logInfo,
+  logWarning,
+  pc,
+} from "../utils/prompts.js";
 
 export interface InstallOptions {
   force?: boolean;
+  mode?: "mcp" | "hooks" | "both";
 }
+
+type IntegrationMode = "mcp" | "hooks" | "both";
 
 interface HooksConfig {
   version: number;
@@ -34,6 +42,15 @@ interface HooksConfig {
     afterFileEdit?: Array<{ command: string }>;
     stop?: Array<{ command: string }>;
     [key: string]: unknown;
+  };
+}
+
+interface MCPConfig {
+  mcpServers: {
+    [key: string]: {
+      command: string;
+      args: string[];
+    };
   };
 }
 
@@ -46,67 +63,117 @@ const HOOKS_CONFIG: HooksConfig = {
   },
 };
 
-// Cursor command: /genstyleguide - generates a concise React styleguide prompt
-// Commands live in .cursor/commands/*.md
+const MCP_CONFIG: MCPConfig = {
+  mcpServers: {
+    uilint: {
+      command: "npx",
+      args: ["uilint-mcp"],
+    },
+  },
+};
+
+// Cursor command: /genstyleguide - generates a prescriptive semantic React style guide prompt
 const GENSTYLEGUIDE_COMMAND_MD = `# React Style Guide Generator
 
-Analyze the React UI codebase to produce a concise style guide. Focus on \`.tsx\` and \`.jsx\` files, prioritizing:
-- Layout components (App, Layout, Shell, Container)
-- Navigation (Nav, Header, Sidebar, Menu)
-- Core UI (Button, Card, Modal, Input, Form)
+Analyze the React UI codebase to produce a **prescriptive, semantic** style guide. Focus on consistency, intent, and relationships—not specific values.
+
+## Philosophy
+
+1. **Identify the intended architecture** from the best patterns in use
+2. **Prescribe semantic rules** — about consistency and relationships, not pixels
+3. **Stay general** — "primary buttons should be visually consistent" not "buttons use px-4"
+4. **Focus on intent** — what should FEEL the same, not what values to use
 
 ## Analysis Steps
 
-1. **Identify Styling System** - Check for:
-   - Tailwind (\`className="..."\` with utility classes)
-   - CSS Modules (\`styles.xxx\`, \`*.module.css\` imports)
-   - Styled-components/Emotion (\`styled.\`, \`css=\`)
-   - Inline styles (\`style={{}}\`)
-   - Plain CSS (\`.css\` imports)
+### 1. Detect the Stack
+- Framework: Next.js (App Router? Pages?), Vite, CRA
+- Component system: shadcn, MUI, Chakra, Radix, custom
+- Styling: Tailwind, CSS Modules, styled-components
+- Forms: react-hook-form, Formik, native
+- State: React context, Zustand, Redux, Jotai
 
-2. **Detect Component Libraries** - Look for imports from:
-   - \`@/components/ui/*\` (shadcn)
-   - \`@mui/*\`, \`@chakra-ui/*\`, \`@radix-ui/*\`, \`antd\`, \`@mantine/*\`
+### 2. Identify Best Patterns
+Examine the **best-written** components. Look at:
+- \`components/ui/*\` — the design system
+- Recently modified files — current standards
+- Shared layouts — structural patterns
 
-3. **Extract Patterns** - Note recurring values for:
-   - Spacing (padding/margin: common values)
-   - Border radius (rounded-*, border-radius values)
-   - Colors (primary, accent, background, text)
-   - Typography (font sizes, weights used)
-
-4. **Assess Consistency**:
-   - Mixed approaches? (e.g., Tailwind + inline styles)
-   - One-off overrides vs systematic patterns
+### 3. Infer Visual Hierarchy & Intent
+Understand the design language:
+- What distinguishes primary vs secondary actions?
+- How is visual hierarchy established?
+- What creates consistency across similar elements?
 
 ## Output Format
 
-Generate a style guide in this exact format:
+Generate at \`<workspaceroot>/.uilint/styleguide.md\`:
 \`\`\`yaml
-system: 
-library: 
-consistency: 
-notes: <one-line on any mixing/inconsistencies>
+# Stack
+framework: 
+styling: 
+components: 
+component_path: 
+forms: 
 
-tokens:
-  spacing: []
-  radius: []
-  colors:
-    primary: 
-    secondary: 
-    background: 
-    text: 
-    border: 
-    accent: 
-  font:
-    sizes: []
-    weights: []
-
-patterns:
+# Component Usage (MUST use these)
+use:
   buttons: 
-  cards: 
   inputs: 
-  containers: 
-  
+  modals: 
+  cards: 
+  feedback: 
+  icons: 
+  links: 
+
+# Semantic Rules (consistency & relationships)
+semantics:
+  hierarchy:
+    - <e.g., "primary actions must be visually distinct from secondary">
+    - <e.g., "destructive actions should be visually cautionary">
+    - <e.g., "page titles should be visually heavier than section titles">
+  consistency:
+    - <e.g., "all primary buttons should share the same visual weight">
+    - <e.g., "form inputs should have uniform height and padding">
+    - <e.g., "card padding should be consistent across the app">
+    - <e.g., "interactive elements should have consistent hover/focus states">
+  spacing:
+    - <e.g., "use the spacing scale — no arbitrary values">
+    - <e.g., "related elements should be closer than unrelated">
+    - <e.g., "section spacing should be larger than element spacing">
+  layout:
+    - <e.g., "use gap for sibling spacing, not margin">
+    - <e.g., "containers should have consistent max-width and padding">
+
+# Patterns (structural, not values)
+patterns:
+  forms: <e.g., "FormField + Controller + zod schema">
+  conditionals: <e.g., "cn() for class merging">
+  loading: <e.g., "Skeleton for content, Spinner for actions">
+  errors: <e.g., "ErrorBoundary at route, inline for forms">
+  responsive: <e.g., "mobile-first, standard breakpoints only">
+
+# Component Authoring
+authoring:
+  - <e.g., "forwardRef for interactive components">
+  - <e.g., "variants via CVA or component props, not className overrides">
+  - <e.g., "extract when used 2+ times">
+  - <e.g., "'use client' only when needed">
+
+# Forbidden
+forbidden:
+  - <e.g., "inline style={{}}">
+  - <e.g., "raw HTML elements when component exists">
+  - <e.g., "arbitrary values — use scale">
+  - <e.g., "className overrides that break visual consistency">
+  - <e.g., "one-off spacing that doesn't match siblings">
+
+# Legacy (if migration in progress)
+legacy:
+  - <e.g., "old: CSS modules → new: Tailwind">
+  - <e.g., "old: Formik → new: react-hook-form">
+
+# Conventions
 conventions:
   - 
   - 
@@ -115,12 +182,14 @@ conventions:
 
 ## Rules
 
-- Be terse. No explanations.
-- Use actual values found, not descriptions.
-- If a token varies wildly, note "inconsistent".
-- Max 5 conventions, most important only.
-- Skip sections if not applicable.
-- Prefer CSS variable names if used consistently.
+- **Semantic over specific**: "consistent padding" not "p-4"
+- **Relationships over absolutes**: "heavier than" not "font-bold"
+- **Intent over implementation**: "visually distinct" not "blue background"
+- **Prescriptive**: Define target state, not current state
+- **Terse**: No prose. Fragments and short phrases only.
+- **Actionable**: Every rule should be human-verifiable
+- **Omit if N/A**: Skip sections that don't apply
+- **Max 5 items** per section — highest impact only
 `;
 
 // Hook 1: beforeSubmitPrompt - clear tracked files
@@ -274,165 +343,237 @@ fi
 exit 0
 `;
 
-export async function install(options: InstallOptions): Promise<void> {
-  try {
-    const projectPath = process.cwd();
-    const cursorDir = join(projectPath, ".cursor");
-    const hooksDir = join(cursorDir, "hooks");
-    const commandsDir = join(cursorDir, "commands");
-    const hooksJsonPath = join(cursorDir, "hooks.json");
-
-    // Hook script paths
-    const sessionStartPath = join(hooksDir, "uilint-session-start.sh");
-    const trackPath = join(hooksDir, "uilint-track.sh");
-    const sessionEndPath = join(hooksDir, "uilint-session-end.sh");
-    const genstyleguideCommandPath = join(commandsDir, "genstyleguide.md");
-
-    // Legacy paths to clean up
-    const oldValidatePath = join(hooksDir, "uilint-validate.sh");
-    const oldJsHookPath = join(hooksDir, "uilint-validate.js");
-    const oldRulesPath = join(cursorDir, "rules", "uilint.mdc");
-
-    const hooksInstalled =
-      existsSync(sessionStartPath) &&
-      existsSync(trackPath) &&
-      existsSync(sessionEndPath);
-    const commandInstalled = existsSync(genstyleguideCommandPath);
-
-    // If everything is already present, avoid overwriting unless forced.
-    if (!options.force && hooksInstalled && commandInstalled) {
-      printWarning("UILint hooks and commands already exist under .cursor/");
-      console.log("Use --force to overwrite the existing installation.");
-      process.exit(1);
-    }
-
-    // Create .cursor/hooks/ directory if it doesn't exist
-    if (!existsSync(hooksDir)) {
-      mkdirSync(hooksDir, { recursive: true });
-    }
-
-    // Create .cursor/commands/ directory if it doesn't exist
-    if (!existsSync(commandsDir)) {
-      mkdirSync(commandsDir, { recursive: true });
-    }
-
-    // Handle existing hooks.json - merge or create
-    let finalHooksConfig: HooksConfig;
-
-    if (existsSync(hooksJsonPath)) {
-      try {
-        const existingContent = readFileSync(hooksJsonPath, "utf-8");
-        const existingConfig: HooksConfig = JSON.parse(existingContent);
-
-        if (!existingConfig.hooks) {
-          existingConfig.hooks = {};
-        }
-
-        // Merge our hooks into existing config
-        finalHooksConfig = mergeHooksConfig(existingConfig, HOOKS_CONFIG);
-        printInfo("Merged UILint hooks into existing hooks.json");
-      } catch {
-        if (!options.force) {
-          printWarning(
-            "Existing hooks.json is invalid. Use --force to overwrite."
-          );
-          process.exit(1);
-        }
-        finalHooksConfig = HOOKS_CONFIG;
-      }
-    } else {
-      finalHooksConfig = HOOKS_CONFIG;
-    }
-
-    // Write hooks.json (always ensure our hook entries exist)
-    writeFileSync(
-      hooksJsonPath,
-      JSON.stringify(finalHooksConfig, null, 2),
-      "utf-8"
-    );
-
-    // Write hook scripts (overwrite only if forced or missing)
-    const shouldWriteHooks = options.force || !hooksInstalled;
-    if (shouldWriteHooks) {
-      writeFileSync(sessionStartPath, SESSION_START_SCRIPT, "utf-8");
-      writeFileSync(trackPath, TRACK_SCRIPT, "utf-8");
-      writeFileSync(sessionEndPath, SESSION_END_SCRIPT, "utf-8");
-
-      // Make scripts executable
-      chmodSync(sessionStartPath, 0o755);
-      chmodSync(trackPath, 0o755);
-      chmodSync(sessionEndPath, 0o755);
-    }
-
-    // Write Cursor command (overwrite only if forced or missing)
-    const shouldWriteCommand = options.force || !commandInstalled;
-    if (shouldWriteCommand) {
-      writeFileSync(
-        genstyleguideCommandPath,
-        GENSTYLEGUIDE_COMMAND_MD,
-        "utf-8"
-      );
-    }
-
-    // Clean up old files
-    if (existsSync(oldValidatePath)) {
-      unlinkSync(oldValidatePath);
-      printInfo("Removed old hook: uilint-validate.sh");
-    }
-    if (existsSync(oldJsHookPath)) {
-      unlinkSync(oldJsHookPath);
-      printInfo("Removed old hook: uilint-validate.js");
-    }
-    if (existsSync(oldRulesPath)) {
-      unlinkSync(oldRulesPath);
-      printInfo("Removed old Cursor rules file: .cursor/rules/uilint.mdc");
-    }
-
-    if (shouldWriteHooks && shouldWriteCommand) {
-      printSuccess("Cursor hooks and commands installed successfully!");
-    } else if (shouldWriteHooks) {
-      printSuccess("Cursor hooks installed successfully!");
-    } else if (shouldWriteCommand) {
-      printSuccess("Cursor command installed successfully!");
-    } else {
-      printSuccess("Cursor configuration updated successfully!");
-    }
-    console.log("\n  Hook config: .cursor/hooks.json");
-    console.log("  Hook scripts:");
-    console.log(
-      "    - .cursor/hooks/uilint-session-start.sh (beforeSubmitPrompt)"
-    );
-    console.log("    - .cursor/hooks/uilint-track.sh (afterFileEdit)");
-    console.log("    - .cursor/hooks/uilint-session-end.sh (stop)");
-    console.log("  Commands:");
-    console.log("    - .cursor/commands/genstyleguide.md (/genstyleguide)");
-    console.log("\nHow it works:");
-    console.log(
-      "  1. Files are tracked as you edit them during an agent session"
-    );
-    console.log("  2. When the agent stops, tracked markup files are scanned");
-    console.log(
-      "  3. If issues are found, a followup message triggers auto-fix"
-    );
-    console.log("\nNext steps:");
-    console.log("  1. Ensure you have a styleguide at .uilint/styleguide.md");
-    console.log("     Run 'uilint init' to create one if needed");
-    console.log("  2. Restart Cursor to load the new hooks");
-  } catch (error) {
-    printError(
-      error instanceof Error
-        ? error.message
-        : "Failed to install Cursor hooks/commands"
-    );
-    process.exit(1);
-  }
-}
-
 // Legacy hook commands to remove during upgrade
 const LEGACY_HOOK_COMMANDS = [
   ".cursor/hooks/uilint-validate.sh",
   ".cursor/hooks/uilint-validate.js",
 ];
+
+export async function install(options: InstallOptions): Promise<void> {
+  const projectPath = process.cwd();
+  const cursorDir = join(projectPath, ".cursor");
+
+  intro("Setup Wizard");
+
+  // Determine integration mode
+  let mode: IntegrationMode;
+  
+  if (options.mode) {
+    mode = options.mode;
+    logInfo(`Using ${mode} mode (from --mode flag)`);
+  } else {
+    mode = await select<IntegrationMode>({
+      message: "How would you like to integrate UILint with Cursor?",
+      options: [
+        {
+          value: "mcp",
+          label: "MCP Server",
+          hint: "Recommended - works with any MCP-compatible agent",
+        },
+        {
+          value: "hooks",
+          label: "Cursor Hooks",
+          hint: "Auto-validates files on agent stop",
+        },
+        {
+          value: "both",
+          label: "Both",
+          hint: "Install MCP server and hooks together",
+        },
+      ],
+      initialValue: "mcp",
+    });
+  }
+
+  const installMCP = mode === "mcp" || mode === "both";
+  const installHooks = mode === "hooks" || mode === "both";
+
+  // Check for existing installations
+  const mcpJsonPath = join(cursorDir, "mcp.json");
+  const hooksJsonPath = join(cursorDir, "hooks.json");
+  
+  const mcpExists = existsSync(mcpJsonPath);
+  const hooksExist = existsSync(hooksJsonPath);
+
+  if (!options.force) {
+    if (installMCP && mcpExists) {
+      const mcpOverwrite = await confirm({
+        message: `${pc.dim(".cursor/mcp.json")} already exists. Merge UILint config?`,
+        initialValue: true,
+      });
+      if (!mcpOverwrite) {
+        logWarning("Skipping MCP installation");
+      }
+    }
+  }
+
+  // Create .cursor directory if needed
+  if (!existsSync(cursorDir)) {
+    mkdirSync(cursorDir, { recursive: true });
+  }
+
+  // Install MCP Server
+  if (installMCP) {
+    await withSpinner("Installing MCP server configuration", async () => {
+      await installMCPServer(cursorDir, options.force);
+    });
+  }
+
+  // Install Cursor Hooks
+  if (installHooks) {
+    await withSpinner("Installing Cursor hooks", async () => {
+      await installCursorHooks(cursorDir, options.force);
+    });
+  }
+
+  // Install /genstyleguide command
+  await withSpinner("Installing /genstyleguide command", async () => {
+    await installGenStyleguideCommand(cursorDir);
+  });
+
+  // Show summary
+  const installedItems: string[] = [];
+  
+  if (installMCP) {
+    installedItems.push(`${pc.cyan("MCP Server")} → .cursor/mcp.json`);
+  }
+  
+  if (installHooks) {
+    installedItems.push(`${pc.cyan("Hooks")} → .cursor/hooks.json`);
+    installedItems.push(`  ${pc.dim("├")} uilint-session-start.sh`);
+    installedItems.push(`  ${pc.dim("├")} uilint-track.sh`);
+    installedItems.push(`  ${pc.dim("└")} uilint-session-end.sh`);
+  }
+  
+  installedItems.push(`${pc.cyan("Command")} → .cursor/commands/genstyleguide.md`);
+
+  note(installedItems.join("\n"), "Installed");
+
+  // Next steps
+  const steps: string[] = [];
+  
+  if (!existsSync(join(projectPath, ".uilint", "styleguide.md"))) {
+    steps.push(`Create a styleguide: ${pc.cyan("uilint init")} or ${pc.cyan("/genstyleguide")}`);
+  }
+  
+  steps.push("Restart Cursor to load the new configuration");
+  
+  if (installMCP) {
+    steps.push(`The MCP server exposes: ${pc.dim("scan_file, scan_snippet, query_styleguide")}`);
+  }
+  
+  if (installHooks) {
+    steps.push("Hooks will auto-validate UI files when the agent stops");
+  }
+
+  note(steps.join("\n"), "Next Steps");
+
+  outro("UILint installed successfully!");
+}
+
+/**
+ * Install MCP server configuration
+ */
+async function installMCPServer(cursorDir: string, force?: boolean): Promise<void> {
+  const mcpJsonPath = join(cursorDir, "mcp.json");
+
+  let config: MCPConfig;
+
+  if (existsSync(mcpJsonPath) && !force) {
+    // Merge with existing config
+    try {
+      const existing = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as MCPConfig;
+      config = {
+        mcpServers: {
+          ...existing.mcpServers,
+          ...MCP_CONFIG.mcpServers,
+        },
+      };
+    } catch {
+      config = MCP_CONFIG;
+    }
+  } else {
+    config = MCP_CONFIG;
+  }
+
+  writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2), "utf-8");
+}
+
+/**
+ * Install Cursor hooks
+ */
+async function installCursorHooks(cursorDir: string, force?: boolean): Promise<void> {
+  const hooksDir = join(cursorDir, "hooks");
+  const hooksJsonPath = join(cursorDir, "hooks.json");
+
+  // Create hooks directory
+  if (!existsSync(hooksDir)) {
+    mkdirSync(hooksDir, { recursive: true });
+  }
+
+  // Hook script paths
+  const sessionStartPath = join(hooksDir, "uilint-session-start.sh");
+  const trackPath = join(hooksDir, "uilint-track.sh");
+  const sessionEndPath = join(hooksDir, "uilint-session-end.sh");
+
+  // Legacy paths to clean up
+  const oldValidatePath = join(hooksDir, "uilint-validate.sh");
+  const oldJsHookPath = join(hooksDir, "uilint-validate.js");
+
+  // Clean up legacy files
+  if (existsSync(oldValidatePath)) {
+    unlinkSync(oldValidatePath);
+  }
+  if (existsSync(oldJsHookPath)) {
+    unlinkSync(oldJsHookPath);
+  }
+
+  // Handle existing hooks.json - merge or create
+  let finalHooksConfig: HooksConfig;
+
+  if (existsSync(hooksJsonPath) && !force) {
+    try {
+      const existingContent = readFileSync(hooksJsonPath, "utf-8");
+      const existingConfig: HooksConfig = JSON.parse(existingContent);
+      finalHooksConfig = mergeHooksConfig(existingConfig, HOOKS_CONFIG);
+    } catch {
+      finalHooksConfig = HOOKS_CONFIG;
+    }
+  } else {
+    finalHooksConfig = HOOKS_CONFIG;
+  }
+
+  // Write hooks.json
+  writeFileSync(
+    hooksJsonPath,
+    JSON.stringify(finalHooksConfig, null, 2),
+    "utf-8"
+  );
+
+  // Write hook scripts
+  writeFileSync(sessionStartPath, SESSION_START_SCRIPT, "utf-8");
+  writeFileSync(trackPath, TRACK_SCRIPT, "utf-8");
+  writeFileSync(sessionEndPath, SESSION_END_SCRIPT, "utf-8");
+
+  // Make scripts executable
+  chmodSync(sessionStartPath, 0o755);
+  chmodSync(trackPath, 0o755);
+  chmodSync(sessionEndPath, 0o755);
+}
+
+/**
+ * Install /genstyleguide Cursor command
+ */
+async function installGenStyleguideCommand(cursorDir: string): Promise<void> {
+  const commandsDir = join(cursorDir, "commands");
+  const genstyleguideCommandPath = join(commandsDir, "genstyleguide.md");
+
+  if (!existsSync(commandsDir)) {
+    mkdirSync(commandsDir, { recursive: true });
+  }
+
+  writeFileSync(genstyleguideCommandPath, GENSTYLEGUIDE_COMMAND_MD, "utf-8");
+}
 
 /**
  * Merge our hooks into existing config without duplicating

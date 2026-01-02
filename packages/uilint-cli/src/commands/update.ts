@@ -3,7 +3,6 @@
  */
 
 import { dirname, resolve } from "path";
-import ora from "ora";
 import {
   createStyleSummary,
   parseStyleGuide,
@@ -21,7 +20,16 @@ import {
   readTailwindThemeTokens,
 } from "uilint-core/node";
 import { getInput, type InputOptions } from "../utils/input.js";
-import { printSuccess, printError, printWarning } from "../utils/output.js";
+import {
+  intro,
+  outro,
+  withSpinner,
+  note,
+  logSuccess,
+  logInfo,
+  logError,
+  pc,
+} from "../utils/prompts.js";
 
 export interface UpdateOptions extends InputOptions {
   styleguide?: string;
@@ -30,7 +38,7 @@ export interface UpdateOptions extends InputOptions {
 }
 
 export async function update(options: UpdateOptions): Promise<void> {
-  const spinner = ora("Updating style guide...").start();
+  intro("Update Style Guide");
 
   try {
     const projectPath = process.cwd();
@@ -38,18 +46,32 @@ export async function update(options: UpdateOptions): Promise<void> {
       options.styleguide || findStyleGuidePath(projectPath);
 
     if (!styleGuidePath) {
-      spinner.fail("No style guide found");
-      printError('Run "uilint init" first to create a style guide.');
+      logError("No style guide found");
+      note(
+        `Run ${pc.cyan("uilint init")} to create a styleguide first.`,
+        "Tip"
+      );
       process.exit(1);
     }
+
+    logInfo(`Using styleguide: ${pc.dim(styleGuidePath)}`);
 
     // Read existing style guide
     const existingContent = await readStyleGuide(styleGuidePath);
     const existingGuide = parseStyleGuide(existingContent);
 
     // Get input
-    const snapshot = await getInput(options);
-    spinner.text = `Detected ${snapshot.elementCount} elements...`;
+    let snapshot;
+    try {
+      snapshot = await withSpinner("Analyzing project", async () => {
+        return await getInput(options);
+      });
+    } catch {
+      logError("No input provided. Use --input-file or pipe HTML to stdin.");
+      process.exit(1);
+    }
+
+    logInfo(`Found ${pc.cyan(String(snapshot.elementCount))} elements`);
 
     const tailwindSearchDir = options.inputFile
       ? dirname(resolve(projectPath, options.inputFile))
@@ -58,96 +80,101 @@ export async function update(options: UpdateOptions): Promise<void> {
 
     if (options.llm) {
       // Use LLM to suggest updates
-      spinner.text = "Analyzing styles with LLM...";
-      spinner.stop();
-      await ensureOllamaReady({ model: options.model });
-      spinner.start();
-      spinner.text = "Analyzing styles with LLM...";
-      const client = new OllamaClient({ model: options.model });
-
-      const styleSummary = createStyleSummary(snapshot.styles, {
-        html: snapshot.html,
-        tailwindTheme,
+      await withSpinner("Preparing Ollama", async () => {
+        await ensureOllamaReady({ model: options.model });
       });
-      const result = await client.analyzeStyles(styleSummary, existingContent);
+
+      const result = await withSpinner("Analyzing styles with LLM", async () => {
+        const client = new OllamaClient({ model: options.model });
+        const styleSummary = createStyleSummary(snapshot.styles, {
+          html: snapshot.html,
+          tailwindTheme,
+        });
+        return await client.analyzeStyles(styleSummary, existingContent);
+      });
 
       if (result.issues.length > 0) {
-        spinner.info("Found potential updates");
-        console.log("\nSuggested changes:");
-        result.issues.forEach((issue) => {
-          console.log(`  • ${issue.message}`);
+        const suggestions = result.issues.map((issue) => {
+          let line = `• ${issue.message}`;
           if (issue.suggestion) {
-            console.log(`    → ${issue.suggestion}`);
+            line += `\n  ${pc.cyan("→")} ${issue.suggestion}`;
           }
+          return line;
         });
-        console.log("\nEdit the style guide manually to apply these changes.");
+
+        note(suggestions.join("\n\n"), `Found ${result.issues.length} suggestion(s)`);
+        logInfo("Edit the styleguide manually to apply these changes.");
+        outro("Analysis complete");
       } else {
-        spinner.stop();
-        printSuccess("Style guide is up to date!");
+        logSuccess("Style guide is up to date!");
+        outro("No changes needed");
       }
     } else {
       // Parse new styles and merge
-      spinner.text = "Merging new styles...";
+      const updatedContent = await withSpinner("Merging styles", async () => {
+        // Create a new guide from detected styles
+        const mergedColors = new Map(snapshot.styles.colors);
+        for (const m of (snapshot.html || "").matchAll(/#[A-Fa-f0-9]{6}\b/g)) {
+          const hex = (m[0] || "").toUpperCase();
+          if (!hex) continue;
+          mergedColors.set(hex, (mergedColors.get(hex) || 0) + 1);
+        }
 
-      // Create a new guide from detected styles
-      const mergedColors = new Map(snapshot.styles.colors);
-      for (const m of (snapshot.html || "").matchAll(/#[A-Fa-f0-9]{6}\b/g)) {
-        const hex = (m[0] || "").toUpperCase();
-        if (!hex) continue;
-        mergedColors.set(hex, (mergedColors.get(hex) || 0) + 1);
-      }
+        const detectedColors = [...mergedColors.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([value], index) => ({
+            name: `Color ${index + 1}`,
+            value: value.toUpperCase(),
+            usage: "",
+          }));
 
-      const detectedColors = [...mergedColors.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([value], index) => ({
-          name: `Color ${index + 1}`,
-          value: value.toUpperCase(),
-          usage: "",
-        }));
+        const detectedGuide = {
+          colors: detectedColors,
+          typography: [],
+          spacing: [],
+          components: [],
+        };
 
-      const detectedGuide = {
-        colors: detectedColors,
-        typography: [],
-        spacing: [],
-        components: [],
-      };
+        // Merge with existing
+        const mergedGuide = mergeStyleGuides(existingGuide, detectedGuide);
+        let newContent = styleGuideToMarkdown(mergedGuide);
 
-      // Merge with existing
-      const mergedGuide = mergeStyleGuides(existingGuide, detectedGuide);
-      let updatedContent = styleGuideToMarkdown(mergedGuide);
+        // Preserve/update Tailwind section by regenerating it from current snapshot.
+        const regenerated = generateStyleGuideFromStyles(snapshot.styles, {
+          html: snapshot.html,
+          tailwindTheme,
+        });
+        const regenSections = parseStyleGuideSections(regenerated);
+        const tailwindBody = regenSections["tailwind"];
+        if (tailwindBody) {
+          newContent =
+            newContent.trimEnd() +
+            "\n\n## Tailwind\n" +
+            tailwindBody.trim() +
+            "\n";
+        }
 
-      // Preserve/update Tailwind section by regenerating it from current snapshot.
-      const regenerated = generateStyleGuideFromStyles(snapshot.styles, {
-        html: snapshot.html,
-        tailwindTheme,
+        return newContent;
       });
-      const regenSections = parseStyleGuideSections(regenerated);
-      const tailwindBody = regenSections["tailwind"];
-      if (tailwindBody) {
-        updatedContent =
-          updatedContent.trimEnd() +
-          "\n\n## Tailwind\n" +
-          tailwindBody.trim() +
-          "\n";
-      }
 
       // Check if there are any changes
       if (updatedContent === existingContent) {
-        spinner.stop();
-        printSuccess("Style guide is up to date!");
+        logSuccess("Style guide is already up to date!");
+        outro("No changes needed");
         return;
       }
 
       // Write updated style guide
-      await writeStyleGuide(styleGuidePath, updatedContent);
+      await withSpinner("Writing styleguide", async () => {
+        await writeStyleGuide(styleGuidePath, updatedContent);
+      });
 
-      spinner.stop();
-      printSuccess(`Style guide updated at ${styleGuidePath}`);
+      note(`Updated: ${pc.dim(styleGuidePath)}`, "Success");
+      outro("Style guide updated!");
     }
   } catch (error) {
-    spinner.fail("Update failed");
-    printError(error instanceof Error ? error.message : "Unknown error");
+    logError(error instanceof Error ? error.message : "Update failed");
     process.exit(1);
   }
 }

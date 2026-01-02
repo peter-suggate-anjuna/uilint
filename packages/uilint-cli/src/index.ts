@@ -115,11 +115,16 @@ program
 // Install command
 program
   .command("install")
-  .description("Install Cursor rules for automatic UI validation")
-  .option("--force", "Overwrite existing rules file")
+  .description("Install UILint integration (MCP server and/or Cursor hooks)")
+  .option("--force", "Overwrite existing configuration files")
+  .option(
+    "--mode <mode>",
+    "Integration mode: mcp, hooks, or both (skips interactive prompt)"
+  )
   .action(async (options) => {
     await install({
       force: options.force,
+      mode: options.mode,
     });
   });
 
