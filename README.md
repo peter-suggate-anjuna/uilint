@@ -519,20 +519,18 @@ pnpm version:patch   # 0.1.0 → 0.1.1 (bug fixes)
 pnpm version:minor   # 0.1.0 → 0.2.0 (new features)
 pnpm version:major   # 0.1.0 → 1.0.0 (breaking changes)
 
-# 2. Build everything
-pnpm build:packages
-
-# 3. Sanity check what would be published
+# 2. Sanity check what would be published
 pnpm publish:dry
 
-# 4. Publish (public)
+# 3. Publish (public)
 pnpm publish:packages
 ```
 
 Notes:
 
 - You must be logged in to npm (`npm whoami`) and have rights to publish the package names.
-- The `version:*` scripts bump all packages and the root in sync automatically.
+- The `version:*` scripts bump all packages and the root in sync automatically, and also sync internal dependency ranges (e.g. `uilint-cli` → `uilint-core`).
+- `publish:*` runs `sync:workspace` + `build:packages` before publishing, so the published `package.json` metadata is always consistent.
 
 ---
 

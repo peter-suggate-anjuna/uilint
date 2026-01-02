@@ -1,6 +1,6 @@
 {
   "name": "uilint-cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "CLI for UILint - AI-powered UI consistency checking",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
     "commander": "^14.0.2",
     "chalk": "^5.6.2",
     "ora": "^9.0.0",
-    "uilint-core": "^0.1.0"
+    "uilint-core": "^0.1.5"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
